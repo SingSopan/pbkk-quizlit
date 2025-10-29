@@ -302,10 +302,10 @@ func SubmitQuizAttempt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Insert quiz attempt
+	// Insert quiz attempt WITH user_answers
 	var attemptID string
 	err = DB.QueryRow(ctx,
-		"INSERT INTO quiz_attempts (quiz_id, user_id, score, total_questions, answers) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+		"INSERT INTO quiz_attempts (quiz_id, user_id, score, total_questions, user_answers, created_at) VALUES ($1, $2, $3, $4, $5, NOW()) RETURNING id",
 		req.QuizID, userID, score, totalQuestions, answersJSON,
 	).Scan(&attemptID)
 	if err != nil {
@@ -348,7 +348,7 @@ func GetQuizAttempt(w http.ResponseWriter, r *http.Request) {
 	var attempt QuizAttempt
 	var answersJSON []byte
 	err := DB.QueryRow(ctx, `
-		SELECT qa.id, qa.created_at, qa.quiz_id, qa.user_id, qa.score, qa.total_questions, qa.answers,
+		SELECT qa.id, qa.created_at, qa.quiz_id, qa.user_id, qa.score, qa.total_questions, qa.user_answers,
 		       q.title, q.pdf_filename
 		FROM quiz_attempts qa
 		JOIN quizzes q ON qa.quiz_id = q.id
@@ -364,15 +364,6 @@ func GetQuizAttempt(w http.ResponseWriter, r *http.Request) {
 		&attempt.QuizTitle,
 		&attempt.PDFFilename,
 	)
-	if err != nil {
-		if err == pgx.ErrNoRows {
-			http.Error(w, "Attempt not found", http.StatusNotFound)
-			return
-		}
-		log.Printf("Failed to query attempt: %v", err)
-		http.Error(w, "Failed to fetch attempt", http.StatusInternalServerError)
-		return
-	}
 
 	// Parse answers JSON
 	if err := json.Unmarshal(answersJSON, &attempt.Answers); err != nil {

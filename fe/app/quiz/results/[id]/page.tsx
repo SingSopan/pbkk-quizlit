@@ -88,7 +88,7 @@ export default function QuizResultsPage({ params }: { params: Promise<{ id: stri
   }
 
   const { attempt, quiz, questions } = data;
-  const userAnswers = attempt.answers ? JSON.parse(attempt.answers) : {};
+  const userAnswers = attempt.answers || {};
   const percentage = (attempt.score / attempt.total_questions) * 100;
 
   return (

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"pbkk-quizlit-backend/internal/middleware"
 	"pbkk-quizlit-backend/internal/models"
@@ -8,7 +9,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid"
 )
 
 // GetQuizForTaking returns a quiz without correct answers for taking
@@ -99,13 +99,17 @@ func (h *QuizHandler) SubmitQuizAttempt(c *gin.Context) {
 	// Get user ID from context
 	userID := middleware.GetUserID(c)
 
-	// Save attempt to database
+	// Save attempt to database with answers
 	repo := repository.NewQuizRepository()
 	ctx := c.Request.Context()
-	attemptID, err := repo.SaveQuizAttempt(ctx, submission.QuizID, userID, correctCount, totalQuestions)
+	attemptID, err := repo.SaveQuizAttempt(ctx, submission.QuizID, userID, correctCount, totalQuestions, submission.Answers)
 	if err != nil {
 		h.logger.Errorf("Failed to save quiz attempt: %v", err)
-		attemptID = uuid.New().String() // Use UUID as fallback
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("Failed to save quiz attempt: %v", err),
+		})
+		return
 	}
 
 	// Create attempt result

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"pbkk-quizlit-backend/internal/database"
 	"pbkk-quizlit-backend/internal/models"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -246,18 +247,30 @@ func (r *QuizRepository) DeleteQuiz(ctx context.Context, id string) error {
 }
 
 // SaveQuizAttempt saves a quiz attempt to the database
-func (r *QuizRepository) SaveQuizAttempt(ctx context.Context, quizID string, userID string, score int, totalQuestions int) (string, error) {
+func (r *QuizRepository) SaveQuizAttempt(ctx context.Context, quizID string, userID string, score int, totalQuestions int, answers map[string]string) (string, error) {
 	db := database.GetDB()
 	if db == nil {
 		return "", fmt.Errorf("database connection not initialized")
 	}
 
+	// Convert quizID string to int64
+	quizIDInt, err := strconv.ParseInt(quizID, 10, 64)
+	if err != nil {
+		return "", fmt.Errorf("invalid quiz ID format: %w", err)
+	}
+
+	// Marshal answers to JSON
+	answersJSON, err := json.Marshal(answers)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal answers: %w", err)
+	}
+
 	var attemptID int64
-	err := db.QueryRow(ctx,
-		`INSERT INTO quiz_attempts (quiz_id, user_id, score, total_questions, created_at) 
-		 VALUES ($1, $2, $3, $4, $5) 
+	err = db.QueryRow(ctx,
+		`INSERT INTO quiz_attempts (quiz_id, user_id, score, total_questions, user_answers, created_at) 
+		 VALUES ($1, $2, $3, $4, $5::jsonb, $6) 
 		 RETURNING id`,
-		quizID, userID, score, totalQuestions, time.Now(),
+		quizIDInt, userID, score, totalQuestions, string(answersJSON), time.Now(),
 	).Scan(&attemptID)
 	if err != nil {
 		return "", fmt.Errorf("failed to save quiz attempt: %w", err)
@@ -273,19 +286,26 @@ func (r *QuizRepository) GetQuizAttempt(ctx context.Context, attemptID string) (
 		return nil, fmt.Errorf("database connection not initialized")
 	}
 
-	// Get attempt details
+	// Convert attemptID string to int64
+	attemptIDInt, err := strconv.ParseInt(attemptID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid attempt ID format: %w", err)
+	}
+
+	// Get attempt details including user_answers
 	var quizID int64
 	var userID string
 	var score int
 	var totalQuestions int
 	var createdAt time.Time
+	var userAnswersJSON []byte
 
-	err := db.QueryRow(ctx,
-		`SELECT quiz_id, user_id, score, total_questions, created_at 
+	err = db.QueryRow(ctx,
+		`SELECT quiz_id, user_id, score, total_questions, user_answers, created_at 
 		 FROM quiz_attempts 
 		 WHERE id = $1`,
-		attemptID,
-	).Scan(&quizID, &userID, &score, &totalQuestions, &createdAt)
+		attemptIDInt,
+	).Scan(&quizID, &userID, &score, &totalQuestions, &userAnswersJSON, &createdAt)
 
 	if err != nil {
 		if err == pgx.ErrNoRows {
@@ -345,6 +365,16 @@ func (r *QuizRepository) GetQuizAttempt(ctx context.Context, attemptID string) (
 		})
 	}
 
+	// Parse user answers from JSON
+	var userAnswers map[string]string
+	if len(userAnswersJSON) > 0 {
+		if err := json.Unmarshal(userAnswersJSON, &userAnswers); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal user answers: %w", err)
+		}
+	} else {
+		userAnswers = make(map[string]string)
+	}
+
 	// Build the response
 	result := map[string]interface{}{
 		"attempt": map[string]interface{}{
@@ -353,6 +383,7 @@ func (r *QuizRepository) GetQuizAttempt(ctx context.Context, attemptID string) (
 			"user_id":         userID,
 			"score":           score,
 			"total_questions": totalQuestions,
+			"answers":         userAnswers,
 			"created_at":      createdAt.Format(time.RFC3339),
 		},
 		"quiz": map[string]interface{}{
