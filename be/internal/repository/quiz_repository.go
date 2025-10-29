@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"pbkk-quizlit-backend/internal/database"
 	"pbkk-quizlit-backend/internal/models"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -16,6 +18,47 @@ type QuizRepository struct{}
 
 func NewQuizRepository() *QuizRepository {
 	return &QuizRepository{}
+}
+
+// cleanQuestionText removes formatting artifacts and prefixes from question text
+func cleanQuestionText(text string) string {
+	// If text is empty, return as-is
+	if text == "" {
+		return text
+	}
+
+	// Remove bullet points and other special characters
+	text = strings.ReplaceAll(text, "•", "")
+	text = strings.ReplaceAll(text, "●", "")
+	text = strings.ReplaceAll(text, "○", "")
+	text = strings.ReplaceAll(text, "■", "")
+	text = strings.ReplaceAll(text, "□", "")
+
+	// Remove common question type prefixes followed by bullet/colon
+	patterns := []string{
+		`^Complete the sentence:\s*`,
+		`^True or False:\s*`,
+		`^Multiple Choice:\s*`,
+		`^Fill in the blank:\s*`,
+		`^Choose the correct answer:\s*`,
+	}
+
+	for _, pattern := range patterns {
+		re := regexp.MustCompile(pattern)
+		text = re.ReplaceAllString(text, "")
+	}
+
+	// Clean up extra whitespace
+	text = strings.TrimSpace(text)
+	re := regexp.MustCompile(`\s+`)
+	text = re.ReplaceAllString(text, " ")
+
+	// If cleaning resulted in empty string, return original
+	if text == "" {
+		return text
+	}
+
+	return text
 }
 
 // CreateQuiz creates a new quiz with questions in the database
@@ -51,6 +94,9 @@ func (r *QuizRepository) CreateQuiz(ctx context.Context, quiz *models.Quiz, user
 	for i := range quiz.Questions {
 		question := &quiz.Questions[i]
 
+		// Clean the question text
+		cleanedText := cleanQuestionText(question.Text)
+
 		// Marshal options to JSON
 		optionsJSON, err := json.Marshal(question.Options)
 		if err != nil {
@@ -66,9 +112,9 @@ func (r *QuizRepository) CreateQuiz(ctx context.Context, quiz *models.Quiz, user
 		var questionID int64
 		err = tx.QueryRow(ctx,
 			`INSERT INTO questions (quiz_id, question_text, options, correct_answer) 
-			 VALUES ($1, $2, $3, $4) 
+			 VALUES ($1, $2, $3::jsonb, $4) 
 			 RETURNING id`,
-			quizID, question.Text, optionsJSON, correctAnswer,
+			quizID, cleanedText, string(optionsJSON), correctAnswer,
 		).Scan(&questionID)
 		if err != nil {
 			return fmt.Errorf("failed to insert question: %w", err)
@@ -94,19 +140,21 @@ func (r *QuizRepository) GetQuiz(ctx context.Context, id string) (*models.Quiz, 
 
 	// Get quiz
 	var quiz models.Quiz
-	var title, description, pdfFilename string
+	var title, description, pdfFilename, userID string
 	var createdAt time.Time
 
 	err := db.QueryRow(ctx,
-		`SELECT id, title, description, pdf_filename, created_at FROM quizzes WHERE id = $1`,
+		`SELECT id, user_id, title, description, pdf_filename, created_at FROM quizzes WHERE id = $1`,
 		id,
-	).Scan(&quiz.ID, &title, &description, &pdfFilename, &createdAt)
+	).Scan(&quiz.ID, &userID, &title, &description, &pdfFilename, &createdAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("quiz not found")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get quiz: %w", err)
 	}
+
+	quiz.UserID = userID
 
 	quiz.Title = title
 	quiz.Description = description

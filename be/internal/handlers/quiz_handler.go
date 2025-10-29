@@ -245,14 +245,38 @@ func (h *QuizHandler) UpdateQuiz(c *gin.Context) {
 func (h *QuizHandler) DeleteQuiz(c *gin.Context) {
 	id := c.Param("id")
 
-	err := h.quizService.DeleteQuiz(id)
+	// Get user ID from auth middleware
+	userID := middleware.GetUserID(c)
+
+	// Verify quiz ownership before deletion
+	quiz, err := h.quizService.GetQuiz(id)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.APIResponse{
+			Success: false,
+			Message: "Quiz not found",
+		})
+		return
+	}
+
+	// Check if user owns this quiz
+	if quiz.UserID != userID {
+		c.JSON(http.StatusForbidden, models.APIResponse{
+			Success: false,
+			Message: "You don't have permission to delete this quiz",
+		})
+		return
+	}
+
+	err = h.quizService.DeleteQuiz(id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,
 			Message: err.Error(),
 		})
 		return
 	}
+
+	h.logger.Infof("Quiz %s deleted by user %s", id, userID)
 
 	c.JSON(http.StatusOK, models.APIResponse{
 		Success: true,
