@@ -162,8 +162,8 @@ func (r *QuizRepository) GetQuiz(ctx context.Context, id string) (*models.Quiz, 
 	return &quiz, nil
 }
 
-// GetAllQuizzes retrieves all quizzes
-func (r *QuizRepository) GetAllQuizzes(ctx context.Context) ([]*models.Quiz, error) {
+// GetAllQuizzes retrieves all quizzes for a specific user
+func (r *QuizRepository) GetAllQuizzes(ctx context.Context, userID string) ([]*models.Quiz, error) {
 	db := database.GetDB()
 	if db == nil {
 		return nil, fmt.Errorf("database connection not initialized")
@@ -173,8 +173,10 @@ func (r *QuizRepository) GetAllQuizzes(ctx context.Context) ([]*models.Quiz, err
 		`SELECT q.id, q.title, q.description, q.pdf_filename, q.created_at, COUNT(qu.id) as question_count
 		 FROM quizzes q
 		 LEFT JOIN questions qu ON qu.quiz_id = q.id
+		 WHERE q.user_id = $1
 		 GROUP BY q.id, q.title, q.description, q.pdf_filename, q.created_at
 		 ORDER BY q.created_at DESC`,
+		userID,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query quizzes: %w", err)
@@ -364,4 +366,52 @@ func (r *QuizRepository) GetQuizAttempt(ctx context.Context, attemptID string) (
 	}
 
 	return result, nil
+}
+
+// ListUserAttempts retrieves all quiz attempts for a specific user
+func (r *QuizRepository) ListUserAttempts(ctx context.Context, userID string) ([]map[string]interface{}, error) {
+	db := database.GetDB()
+	if db == nil {
+		return nil, fmt.Errorf("database connection not initialized")
+	}
+
+	rows, err := db.Query(ctx,
+		`SELECT qa.id, qa.quiz_id, qa.score, qa.total_questions, qa.created_at, q.title, q.pdf_filename
+		 FROM quiz_attempts qa
+		 JOIN quizzes q ON qa.quiz_id = q.id
+		 WHERE qa.user_id = $1
+		 ORDER BY qa.created_at DESC`,
+		userID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query attempts: %w", err)
+	}
+	defer rows.Close()
+
+	attempts := []map[string]interface{}{}
+	for rows.Next() {
+		var attemptID int64
+		var quizID int64
+		var score, totalQuestions int
+		var createdAt time.Time
+		var title, pdfFilename string
+
+		if err := rows.Scan(&attemptID, &quizID, &score, &totalQuestions, &createdAt, &title, &pdfFilename); err != nil {
+			return nil, fmt.Errorf("failed to scan attempt: %w", err)
+		}
+
+		percentage := float64(score) / float64(totalQuestions) * 100
+
+		attempts = append(attempts, map[string]interface{}{
+			"id":              fmt.Sprintf("%d", attemptID),
+			"quiz_id":         fmt.Sprintf("%d", quizID),
+			"quiz_title":      title,
+			"score":           score,
+			"total_questions": totalQuestions,
+			"percentage":      percentage,
+			"created_at":      createdAt.Format(time.RFC3339),
+		})
+	}
+
+	return attempts, nil
 }

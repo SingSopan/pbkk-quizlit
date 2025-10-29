@@ -192,9 +192,12 @@ func (h *QuizHandler) GetQuiz(c *gin.Context) {
 	})
 }
 
-// GetAllQuizzes returns all quizzes
+// GetAllQuizzes returns all quizzes for the authenticated user
 func (h *QuizHandler) GetAllQuizzes(c *gin.Context) {
-	quizzes, err := h.quizService.GetAllQuizzes()
+	// Get user ID from auth middleware
+	userID := middleware.GetUserID(c)
+
+	quizzes, err := h.quizService.GetAllQuizzes(userID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.APIResponse{
 			Success: false,

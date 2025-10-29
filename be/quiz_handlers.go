@@ -95,6 +95,13 @@ func CreateQuiz(w http.ResponseWriter, r *http.Request) {
 
 // ListQuizzes lists all available quizzes
 func ListQuizzes(w http.ResponseWriter, r *http.Request) {
+	// Get user from context (added by auth middleware)
+	userID, ok := r.Context().Value("userID").(string)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	// Get query parameters
 	limitStr := r.URL.Query().Get("limit")
 	offsetStr := r.URL.Query().Get("offset")
@@ -119,10 +126,11 @@ func ListQuizzes(w http.ResponseWriter, r *http.Request) {
 		       COUNT(qs.id) as question_count
 		FROM quizzes q
 		LEFT JOIN questions qs ON q.id = qs.quiz_id
+		WHERE q.user_id = $1
 		GROUP BY q.id, q.created_at, q.pdf_filename, q.user_id, q.title
 		ORDER BY q.created_at DESC
-		LIMIT $1 OFFSET $2
-	`, limit, offset)
+		LIMIT $2 OFFSET $3
+	`, userID, limit, offset) // Add userID as first parameter
 	if err != nil {
 		log.Printf("Failed to query quizzes: %v", err)
 		http.Error(w, "Failed to fetch quizzes", http.StatusInternalServerError)
