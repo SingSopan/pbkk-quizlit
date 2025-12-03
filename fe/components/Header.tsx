@@ -24,7 +24,7 @@ export default function Header() {
   const initials = getUserInitials(user);
 
   return (
-    <header className="bg-gray-800 border-b border-gray-700">
+    <header className="bg-slate-800 border-b border-slate-700">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center py-4">
           {/* Left: Brand + Nav */}
@@ -33,13 +33,13 @@ export default function Header() {
               QuizLit
             </Link>
             <nav className="flex items-center space-x-6">
-              <Link href="/create" className="text-gray-300 hover:text-white transition-colors">
+              <Link href="/create" className="text-slate-300 hover:text-white transition-colors font-medium">
                 Create
               </Link>
-              <Link href="/dashboard" className="text-gray-300 hover:text-white transition-colors">
+              <Link href="/dashboard" className="text-slate-300 hover:text-white transition-colors font-medium">
                 My Quizzes
               </Link>
-              <Link href="/history" className="text-gray-300 hover:text-white transition-colors">
+              <Link href="/history" className="text-slate-300 hover:text-white transition-colors font-medium">
                 History
               </Link>
             </nav>
@@ -49,12 +49,12 @@ export default function Header() {
           <div className="relative">
             <button
               onClick={() => setShowDropdown(!showDropdown)}
-              className="flex items-center space-x-2 text-white hover:text-gray-300 transition-colors"
+              className="flex items-center space-x-2 text-white hover:text-slate-200 transition-colors"
             >
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
+              <div className="w-9 h-9 bg-indigo-600 rounded-full flex items-center justify-center text-sm font-semibold text-white">
                 {initials}
               </div>
-              <span>{displayName}</span>
+              <span className="font-medium">{displayName}</span>
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
               </svg>
@@ -62,30 +62,30 @@ export default function Header() {
 
             {/* Dropdown Menu */}
             {showDropdown && (
-              <div className="absolute right-0 mt-2 w-48 bg-gray-700 rounded-lg shadow-lg py-1 z-50">
-                <div className="px-4 py-2 border-b border-gray-600">
-                  <p className="text-sm text-white font-medium">{displayName}</p>
-                  <p className="text-xs text-gray-400">{user?.email}</p>
+              <div className="absolute right-0 mt-3 w-56 bg-slate-700 rounded-xl shadow-xl py-2 z-50 border border-slate-600">
+                <div className="px-4 py-3 border-b border-slate-600">
+                  <p className="text-sm text-white font-semibold">{displayName}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{user?.email}</p>
                 </div>
                 <Link
                   href="/dashboard"
-                  className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600 hover:text-white"
+                  className="block px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-600 hover:text-white transition-colors"
                   onClick={() => setShowDropdown(false)}
                 >
-                  Dashboard
+                  📊 Dashboard
                 </Link>
                 <Link
                   href="/history"
-                  className="block px-4 py-2 text-sm text-gray-300 hover:bg-gray-600 hover:text-white"
+                  className="block px-4 py-2.5 text-sm text-slate-300 hover:bg-slate-600 hover:text-white transition-colors"
                   onClick={() => setShowDropdown(false)}
                 >
-                  History
+                  📚 History
                 </Link>
                 <button
                   onClick={handleLogout}
-                  className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-gray-600 hover:text-red-300"
+                  className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-950/30 hover:text-red-300 transition-colors"
                 >
-                  Logout
+                  🚪 Logout
                 </button>
               </div>
             )}
