@@ -1,7 +1,8 @@
 package api
 
 import (
-	"log"
+	"time"
+
 	"pbkk-quizlit-backend/internal/config"
 	"pbkk-quizlit-backend/internal/database"
 	"pbkk-quizlit-backend/internal/handlers"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/sirupsen/logrus"
 )
 
 type Server struct {
@@ -28,33 +30,35 @@ func NewServer(cfg *config.Config) *Server {
 	// Initialize auth middleware with JWT secret
 	if cfg.SupabaseJWTSecret != "" {
 		middleware.InitAuth(cfg.SupabaseJWTSecret)
-		log.Println("✅ Auth middleware initialized")
+		logrus.Info("✅ Auth middleware initialized")
 	} else {
-		log.Println("⚠️  No SUPABASE_JWT_SECRET configured, auth will not work")
+		logrus.Warn("⚠️  No SUPABASE_JWT_SECRET configured, auth will not work")
 	}
 
 	// Initialize database connection
 	if cfg.DatabaseURL != "" {
 		if err := database.Connect(cfg.DatabaseURL); err != nil {
-			log.Printf("⚠️  Failed to connect to database: %v", err)
-			log.Println("   Continuing without database (will use in-memory storage)")
+			logrus.WithError(err).Warn("⚠️  Failed to connect to database")
+			logrus.Info("   Continuing without database (will use in-memory storage)")
 		} else {
-			log.Println("✅ Database connected successfully")
+			logrus.Info("✅ Database connected successfully")
 		}
 	} else {
-		log.Println("⚠️  No DATABASE_URL configured, using in-memory storage")
+		logrus.Warn("⚠️  No DATABASE_URL configured, using in-memory storage")
 	}
 
 	router := gin.Default()
 
-	// Configure CORS
-	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{cfg.CorsOrigin},
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
-		ExposeHeaders:    []string{"Content-Length"},
-		AllowCredentials: true,
-	}))
+	// Configure CORS - allow all origins for flexibility
+	corsConfig := cors.Config{
+		AllowOrigins:     []string{"*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"},
+		ExposeHeaders:    []string{"Content-Length", "Content-Type"},
+		AllowCredentials: false, // Must be false when AllowOrigins is "*"
+		MaxAge:           12 * time.Hour,
+	}
+	router.Use(cors.New(corsConfig))
 
 	server := &Server{
 		config: cfg,

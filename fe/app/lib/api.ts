@@ -1,8 +1,8 @@
 // API configuration
 import { getAccessToken } from './auth';
 
-const API_BASE_URL = typeof window !== 'undefined' 
-  ? 'http://localhost:8080/api/v1' 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL 
+  ? `${process.env.NEXT_PUBLIC_API_URL}/api/v1`
   : 'http://localhost:8080/api/v1';
 
 // API endpoints
