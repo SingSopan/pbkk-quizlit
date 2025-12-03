@@ -20,6 +20,10 @@ func NewQuizService() *QuizService {
 	}
 }
 
+func (qs *QuizService) QuizTitleExists(ctx context.Context, title string, userID string) (bool, error) {
+	return qs.repo.QuizTitleExists(ctx, title, userID)
+}
+
 func (qs *QuizService) CreateQuiz(quiz *models.Quiz, userID string) error {
 	if quiz.ID == "" {
 		quiz.ID = uuid.New().String()

@@ -12,10 +12,14 @@ export default function CreateQuiz() {
   const [quizDetails, setQuizDetails] = useState({
     title: "",
     description: "",
-    difficulty: "easy" as "easy" | "medium" | "hard"
+    questionCount: 10
   });
   const [showQuizDetails, setShowQuizDetails] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
+  const [showErrorModal, setShowErrorModal] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [generatedQuiz, setGeneratedQuiz] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDrag = (e: React.DragEvent) => {
@@ -57,10 +61,6 @@ export default function CreateQuiz() {
   };
 
   const generateQuiz = async () => {
-    console.log('generateQuiz called');
-    console.log('uploadedFile:', uploadedFile);
-    console.log('quizDetails:', quizDetails);
-
     if (!quizDetails.title || !quizDetails.description) {
       alert('Please fill in all quiz details');
       return;
@@ -76,8 +76,8 @@ export default function CreateQuiz() {
         quiz = await generateQuizFromFile(uploadedFile, {
           title: quizDetails.title,
           description: quizDetails.description,
-          difficulty: quizDetails.difficulty,
-          questionCount: 10,
+          difficulty: "medium",
+          questionCount: quizDetails.questionCount,
         });
       } else {
         // Use text generation API with placeholder content
@@ -86,21 +86,22 @@ export default function CreateQuiz() {
           {
             title: quizDetails.title,
             description: quizDetails.description,
-            difficulty: quizDetails.difficulty,
-            questionCount: 10,
+            difficulty: "medium",
+            questionCount: quizDetails.questionCount,
           }
         );
       }
 
-      console.log('Quiz generated successfully:', quiz);
-      alert('Quiz created successfully!');
-      
-      // Redirect to dashboard
-      console.log('Redirecting to dashboard');
-      window.location.href = '/dashboard';
-    } catch (error) {
-      console.error('Error generating quiz:', error);
-      alert('Failed to generate quiz. Please try again.');
+      setGeneratedQuiz(quiz);
+      setShowSuccessModal(true);
+    } catch (error: any) {
+      // Silently handle errors - show modal instead of console logging
+      if (error?.message?.includes('already exists') || error?.response?.status === 409) {
+        setErrorMessage(`Quiz "${quizDetails.title}" already exists. Please choose a different name.`);
+      } else {
+        setErrorMessage('Failed to generate quiz. Please try again.');
+      }
+      setShowErrorModal(true);
     } finally {
       setIsGenerating(false);
     }
@@ -110,6 +111,113 @@ export default function CreateQuiz() {
     <div className="min-h-screen bg-gray-900">
       {/* Header */}
       <Header />
+
+      {/* Success Modal */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 border border-gray-700">
+            <div className="flex flex-col items-center">
+              {/* Success Icon */}
+              <div className="w-20 h-20 mb-6 bg-green-500/20 rounded-full flex items-center justify-center">
+                <svg className="w-12 h-12 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+              
+              {/* Text */}
+              <h3 className="text-2xl font-bold text-white mb-2">
+                Quiz Created Successfully!
+              </h3>
+              <p className="text-gray-400 text-center mb-6">
+                Your quiz has been generated with {generatedQuiz?.questions?.length || 0} questions.
+              </p>
+              
+              {/* Buttons */}
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => window.location.href = '/dashboard'}
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-medium transition-colors"
+                >
+                  View Dashboard
+                </button>
+                <button
+                  onClick={() => {
+                    setShowSuccessModal(false);
+                    setUploadedFile(null);
+                    setQuizDetails({ title: '', description: '', questionCount: 10 });
+                    setShowQuizDetails(false);
+                  }}
+                  className="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-3 px-6 rounded-lg font-medium transition-colors"
+                >
+                  Create Another
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Modal */}
+      {showErrorModal && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 border border-red-900/50">
+            <div className="flex flex-col items-center">
+              {/* Error Icon */}
+              <div className="w-20 h-20 mb-6 bg-red-500/20 rounded-full flex items-center justify-center">
+                <svg className="w-12 h-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              
+              {/* Text */}
+              <h3 className="text-2xl font-bold text-white mb-2">
+                Oops! Something Went Wrong
+              </h3>
+              <p className="text-gray-300 text-center mb-6">
+                {errorMessage}
+              </p>
+              
+              {/* Button */}
+              <button
+                onClick={() => setShowErrorModal(false)}
+                className="w-full bg-red-600 hover:bg-red-700 text-white py-3 px-6 rounded-lg font-medium transition-colors"
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Loading Overlay */}
+      {isGenerating && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-gray-800 rounded-lg p-8 max-w-md w-full mx-4 border border-gray-700">
+            <div className="flex flex-col items-center">
+              {/* Spinner */}
+              <div className="relative w-20 h-20 mb-6">
+                <div className="absolute inset-0 border-4 border-blue-200 rounded-full"></div>
+                <div className="absolute inset-0 border-4 border-transparent border-t-blue-600 rounded-full animate-spin"></div>
+              </div>
+              
+              {/* Text */}
+              <h3 className="text-xl font-semibold text-white mb-2">
+                Generating Your Quiz
+              </h3>
+              <p className="text-gray-400 text-center">
+                AI is analyzing your content and creating questions. This may take a moment...
+              </p>
+              
+              {/* Progress dots */}
+              <div className="flex gap-2 mt-6">
+                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-4xl mx-auto px-4 py-8">
         {/* Title */}
@@ -176,19 +284,11 @@ export default function CreateQuiz() {
 
             {/* Supported Formats */}
             <div className="mt-4">
-              <p className="text-gray-400 text-sm text-center">Supported formats:</p>
+              <p className="text-gray-400 text-sm text-center">Supported format:</p>
               <div className="flex justify-center space-x-4 mt-2">
                 <div className="flex items-center space-x-1 bg-gray-700 px-3 py-1 rounded">
                   <span className="text-red-400 text-sm">📄</span>
                   <span className="text-gray-300 text-sm">PDF</span>
-                </div>
-                <div className="flex items-center space-x-1 bg-gray-700 px-3 py-1 rounded">
-                  <span className="text-blue-400 text-sm">📘</span>
-                  <span className="text-gray-300 text-sm">DOCX</span>
-                </div>
-                <div className="flex items-center space-x-1 bg-gray-700 px-3 py-1 rounded">
-                  <span className="text-green-400 text-sm">📄</span>
-                  <span className="text-gray-300 text-sm">TXT</span>
                 </div>
               </div>
             </div>
@@ -275,39 +375,35 @@ export default function CreateQuiz() {
               
               <div>
                 <label className="block text-gray-300 text-sm font-medium mb-2">
-                  Choose Difficulty Level
+                  Number of Questions
                 </label>
-                <p className="text-gray-400 text-sm mb-4">
-                  Select the complexity level for your quiz questions
-                </p>
-                <div className="flex space-x-4">
-                  {[
-                    { value: 'easy', label: 'Beginner', color: 'green' },
-                    { value: 'medium', label: 'Intermediate', color: 'yellow' },
-                    { value: 'hard', label: 'Expert', color: 'red' }
-                  ].map((level) => (
-                    <button
-                      key={level.value}
-                      onClick={() => setQuizDetails({...quizDetails, difficulty: level.value as "easy" | "medium" | "hard"})}
-                      className={`px-6 py-3 rounded-lg font-medium transition-colors ${
-                        quizDetails.difficulty === level.value
-                          ? `bg-${level.color}-600 text-white`
-                          : `bg-gray-700 text-gray-300 hover:bg-${level.color}-600/20`
-                      }`}
-                    >
-                      {level.label}
-                    </button>
-                  ))}
-                </div>
+                <input
+                  type="number"
+                  min="5"
+                  max="15"
+                  value={quizDetails.questionCount}
+                  onChange={(e) => setQuizDetails({...quizDetails, questionCount: parseInt(e.target.value) || 10})}
+                  className="w-full px-4 py-3 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                  placeholder="Enter number of questions (5-15)"
+                />
+                <p className="text-gray-400 text-sm mt-1">Choose between 5 and 15 questions</p>
               </div>
             </div>
             
             <button
               onClick={generateQuiz}
               disabled={!quizDetails.title || !quizDetails.description || isGenerating}
-              className="mt-6 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 text-white py-3 px-6 rounded-lg font-medium transition-colors"
+              className="mt-6 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white py-3 px-6 rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
             >
-              {isGenerating ? 'Generating Quiz...' : 'Generate Quiz'}
+              {isGenerating ? (
+                <>
+                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Generating Quiz...
+                </>
+              ) : 'Generate Quiz'}
             </button>
           </div>
         )}

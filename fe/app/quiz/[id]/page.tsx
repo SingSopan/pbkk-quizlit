@@ -24,7 +24,6 @@ interface Quiz {
 export default function StartQuiz({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
   const resolvedParams = use(params);
-  const [selectedMode, setSelectedMode] = useState<'practice' | 'challenge' | null>(null);
   const [showQuiz, setShowQuiz] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<{ [key: number]: string }>({});
@@ -80,10 +79,6 @@ export default function StartQuiz({ params }: { params: Promise<{ id: string }> 
   }
 
   const questions = quiz.questions;
-
-  const handleModeSelect = (mode: 'practice' | 'challenge') => {
-    setSelectedMode(mode);
-  };
 
   const handleStartQuiz = () => {
     setShowQuiz(true);
@@ -284,78 +279,49 @@ export default function StartQuiz({ params }: { params: Promise<{ id: string }> 
       <div className="max-w-md w-full mx-4">
         <div className="bg-gray-800 rounded-lg p-8 text-center">
           <h1 className="text-2xl font-bold text-blue-400 mb-2">{quiz.title}</h1>
-          <p className="text-gray-300 mb-1">{quiz.description}</p>
+          <p className="text-gray-300 mb-6">{quiz.description}</p>
           
-          <div className="flex items-center justify-center space-x-4 mb-8 text-gray-400">
+          <div className="flex items-center justify-center mb-8 text-gray-400">
             <div className="flex items-center space-x-1">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <span className="text-sm">{quiz.totalQuestions} questions</span>
             </div>
-            <div className="flex items-center space-x-1">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
-              <span className="text-sm">{quiz.difficulty} Difficulty</span>
-            </div>
           </div>
           
-          <div className="space-y-4 mb-8">
-            <button
-              onClick={() => handleModeSelect('practice')}
-              className={`w-full p-4 rounded-lg border-2 transition-colors ${
-                selectedMode === 'practice'
-                  ? 'border-blue-500 bg-blue-900/20'
-                  : 'border-gray-600 bg-gray-700 hover:border-gray-500'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 bg-blue-600/20 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                  </svg>
-                </div>
+          <div className="mb-8">
+            <div className="bg-gray-700/50 rounded-lg p-6 border border-gray-600">
+              <div className="flex items-start space-x-3">
+                <svg className="w-6 h-6 text-blue-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
                 <div className="text-left">
-                  <h3 className="text-white font-semibold">Practice Mode</h3>
-                  <p className="text-gray-400 text-sm">Unlimited time to learn</p>
+                  <h3 className="text-white font-semibold mb-1">Quiz Instructions</h3>
+                  <ul className="text-gray-300 text-sm space-y-1">
+                    <li>• Answer all {quiz.totalQuestions} questions</li>
+                    <li>• Select one answer per question</li>
+                    <li>• You can navigate between questions</li>
+                    <li>• Submit when you're done</li>
+                  </ul>
                 </div>
               </div>
-            </button>
-            
-            <button
-              onClick={() => handleModeSelect('challenge')}
-              className={`w-full p-4 rounded-lg border-2 transition-colors ${
-                selectedMode === 'challenge'
-                  ? 'border-blue-500 bg-blue-900/20'
-                  : 'border-gray-600 bg-gray-700 hover:border-gray-500'
-              }`}
-            >
-              <div className="flex items-center space-x-3">
-                <div className="w-12 h-12 bg-purple-600/20 rounded-lg flex items-center justify-center">
-                  <svg className="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <div className="text-left">
-                  <h3 className="text-white font-semibold">Challenge Mode</h3>
-                  <p className="text-gray-400 text-sm">Timed quiz</p>
-                </div>
-              </div>
-            </button>
+            </div>
           </div>
           
           <button
             onClick={handleStartQuiz}
-            disabled={!selectedMode}
-            className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white py-3 px-6 rounded-lg font-medium transition-colors"
+            className="w-full bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-lg font-medium transition-colors mb-4"
           >
             Start Quiz
           </button>
           
-          <p className="text-gray-400 text-sm mt-4">
-            Take your time and read each question carefully
-          </p>
+          <Link
+            href="/dashboard"
+            className="block w-full text-center bg-gray-700 hover:bg-gray-600 text-white py-3 px-6 rounded-lg font-medium transition-colors"
+          >
+            Cancel
+          </Link>
         </div>
       </div>
     </div>

@@ -18,10 +18,12 @@ import (
 )
 
 type AIService struct {
-	client    *openai.Client
-	logger    *logrus.Logger
-	apiKey    string
-	useOpenAI bool
+	client         *openai.Client
+	senopatiClient *SenopatiClient
+	logger         *logrus.Logger
+	apiKey         string
+	useOpenAI      bool
+	useSenopati    bool
 	// RAG components
 	rag       *RAGService
 	enableRAG bool
@@ -35,16 +37,25 @@ func NewAIService(apiKey string) *AIService {
 		client = openai.NewClient(apiKey)
 		useOpenAI = true
 	}
+
+	// Initialize Senopati client
+	senopatiClient := NewSenopatiClient()
+	// Senopati is always available (no API key required)
+	useSenopati := true
+
 	logger := logrus.New()
 
 	ai := &AIService{
-		client:    client,
-		logger:    logger,
-		apiKey:    apiKey,
-		useOpenAI: useOpenAI,
+		client:         client,
+		senopatiClient: senopatiClient,
+		logger:         logger,
+		apiKey:         apiKey,
+		useOpenAI:      useOpenAI,
+		useSenopati:    useSenopati,
 	}
 	// initialize lightweight RAG with hash embedding (works without external deps)
 	ai.rag = NewRAGService(HashEmbedding{})
+	// Enable RAG to intelligently select relevant content chunks
 	ai.enableRAG = true
 	return ai
 }
@@ -69,6 +80,7 @@ func (ai *AIService) GenerateQuizFromContent(content string, req *models.QuizGen
 
 	// Build RAG index and retrieve top context chunks to ground prompts
 	if ai.rag != nil && ai.enableRAG {
+		ai.logger.Info("Using RAG to select relevant content chunks")
 		// Use title or a generated docID
 		docID := req.Title
 		if strings.TrimSpace(docID) == "" {
@@ -80,55 +92,46 @@ func (ai *AIService) GenerateQuizFromContent(content string, req *models.QuizGen
 			if query == "" {
 				query = "generate quiz key concepts"
 			}
-			top, _ := ai.rag.Retrieve(query, 5)
+			top, _ := ai.rag.Retrieve(query, 8) // Get more chunks for better coverage
 			if len(top) > 0 {
-				// assemble grounded context
+				// Assemble clean context without metadata prefixes
 				var b strings.Builder
-				b.WriteString("GroundedContext:\n")
+				totalLength := 0
+				maxTotalLength := 8000 // Keep under 8KB for better performance
+
 				for i, it := range top {
+					chunkText := strings.TrimSpace(it.Text)
+
+					// Skip if would exceed limit
+					if totalLength+len(chunkText) > maxTotalLength {
+						break
+					}
+
 					if i > 0 {
-						b.WriteString("\n---\n")
+						b.WriteString("\n\n")
 					}
-					// cap chunk length
-					t := it.Text
-					if len(t) > 1200 {
-						t = t[:1200]
-					}
-					b.WriteString(t)
+					b.WriteString(chunkText)
+					totalLength += len(chunkText) + 2
 				}
-				// prepend grounded context to content for downstream models
-				content = b.String() + "\n\nSourceContent:\n" + content
+
+				// Replace content with curated chunks
+				content = b.String()
+				ai.logger.Infof("RAG selected %d chunks, total length: %d chars", len(top), len(content))
 			}
 		} else {
 			ai.logger.Warnf("RAG indexing failed: %v", err)
 		}
 	}
 
-	// Try different AI services in order of preference
-	if ai.useOpenAI && ai.client != nil {
-		// Try OpenAI first if available
-		// Convert QuizGenerationRequest to CreateQuizRequest for OpenAI method
-		createReq := models.CreateQuizRequest{
-			Title:         req.Title,
-			Description:   req.Description,
-			Difficulty:    req.Difficulty,
-			QuestionCount: req.QuestionCount,
-		}
-		questions, err = ai.generateWithOpenAI(content, createReq)
+	// Try Senopati first (ITS local LLM)
+	if ai.useSenopati {
+		questions, err = ai.generateWithSenopati(content, req)
 		if err != nil {
-			ai.logger.Warnf("OpenAI failed: %v, trying free alternatives", err)
+			ai.logger.Errorf("Senopati failed: %v", err)
+			return nil, fmt.Errorf("quiz generation failed: %w", err)
 		}
-	}
-
-	// If OpenAI failed or not available, try free alternatives
-	if len(questions) == 0 {
-		// Try Ollama (free local AI)
-		questions, err = ai.generateWithOllama(content, req)
-		if err != nil {
-			ai.logger.Warnf("Ollama failed: %v, trying rule-based generation", err)
-			// Finally, use intelligent rule-based generation
-			questions = ai.generateIntelligentQuestions(content, req)
-		}
+	} else {
+		return nil, fmt.Errorf("no AI provider configured - Senopati is required")
 	}
 
 	// Create quiz object
@@ -189,6 +192,71 @@ func (ai *AIService) generateWithOpenAI(content string, req models.CreateQuizReq
 	return questions, nil
 }
 
+// generateWithSenopati uses ITS Senopati local LLM for quiz generation
+func (ai *AIService) generateWithSenopati(content string, req *models.QuizGenerationRequest) ([]models.Question, error) {
+	ai.logger.Info("Using ITS Senopati LLM for quiz generation")
+
+	// Truncate content if too large (max ~10KB for better performance)
+	maxContentLength := 10000
+	if len(content) > maxContentLength {
+		ai.logger.Warnf("Content too large (%d chars), truncating to %d", len(content), maxContentLength)
+		content = content[:maxContentLength] + "\\n[Content truncated due to size...]"
+	}
+
+	prompt := ai.buildPrompt(content, req)
+
+	// Get available models from API
+	modelsResp, err := ai.senopatiClient.ListModels()
+	var model string
+	if err == nil && len(modelsResp.Models) > 0 {
+		// Prefer larger models for better quality and completion
+		// Priority: qwen2.5:14b > llama3:latest > qwen2.5:7b > gemma:7b
+		preferredModels := []string{"qwen2.5:14b", "llama3:latest", "qwen2.5:7b", "llama3", "qwen2.5"}
+
+		for _, preferred := range preferredModels {
+			for _, available := range modelsResp.Models {
+				if strings.Contains(available, preferred) {
+					model = available
+					ai.logger.Infof("Using Senopati model: %s (selected from %d available models)", model, len(modelsResp.Models))
+					goto modelSelected
+				}
+			}
+		}
+
+		// If no preferred model found, use first available
+		model = modelsResp.Models[0]
+		ai.logger.Infof("Using Senopati model: %s (default from %d available models)", model, len(modelsResp.Models))
+	modelSelected:
+	} else {
+		// Fallback to default model from docs
+		model = "qwen2.5:14b"
+		ai.logger.Warnf("Could not fetch models (error: %v), using default: %s", err, model)
+	}
+
+	// Call Senopati Generate endpoint
+	// Scale max tokens based on question count (each question ~300 tokens)
+	maxTokens := req.QuestionCount * 400
+	if maxTokens < 4000 {
+		maxTokens = 4000 // Minimum for safety
+	}
+	if maxTokens > 8000 {
+		maxTokens = 8000 // Cap at 8000
+	}
+	resp, err := ai.senopatiClient.GenerateText(model, prompt, 0.7, maxTokens)
+	if err != nil {
+		return nil, fmt.Errorf("senopati API error: %w", err)
+	}
+
+	// Parse the response using the same parser
+	questions, err := ai.parseAIResponse(resp.Response)
+	if err != nil {
+		ai.logger.Errorf("Failed to parse Senopati response: %v", err)
+		return nil, err
+	}
+
+	return questions, nil
+}
+
 // generateWithOllama uses Ollama API for free local AI processing
 func (ai *AIService) generateWithOllama(content string, req *models.QuizGenerationRequest) ([]models.Question, error) {
 	ai.logger.Info("Using Ollama for quiz generation")
@@ -243,14 +311,26 @@ func (ai *AIService) generateWithOllama(content string, req *models.QuizGenerati
 // generateIntelligentQuestions creates quiz questions using rule-based generation
 func (ai *AIService) generateIntelligentQuestions(content string, req *models.QuizGenerationRequest) []models.Question {
 	ai.logger.Info("Using enhanced intelligent rule-based quiz generation")
+	ai.logger.Infof("Content length: %d characters", len(content))
 
 	// Enhanced content analysis
 	sentences := ai.extractSentences(content)
+	ai.logger.Infof("Extracted %d sentences", len(sentences))
+
 	keywords := ai.extractKeywords(content)
+	ai.logger.Infof("Extracted %d keywords", len(keywords))
+
 	concepts := ai.extractConcepts(content)
+	ai.logger.Infof("Extracted %d concepts", len(concepts))
 
 	// Filter sentences to only informative ones
 	validSentences := ai.filterInformativeSentences(sentences, keywords)
+	ai.logger.Infof("Filtered to %d valid sentences", len(validSentences))
+
+	if len(validSentences) == 0 {
+		ai.logger.Warn("No valid sentences found for question generation")
+		return []models.Question{}
+	}
 
 	var questions []models.Question
 	targetCount := req.QuestionCount
@@ -747,7 +827,7 @@ func (ai *AIService) generateFillInTheBlank(sentence string, keywords []string) 
 }
 
 func (ai *AIService) buildPrompt(content string, req *models.QuizGenerationRequest) string {
-	prompt := fmt.Sprintf(`Create a quiz with %d questions based on the following content. 
+	prompt := fmt.Sprintf(`Create a quiz with EXACTLY %d questions based on the following content. 
 
 Content:
 %s
@@ -755,25 +835,45 @@ Content:
 Requirements:
 - Title: %s
 - Description: %s  
-- Difficulty: %s
-- Generate exactly %d questions
-- Include multiple choice, true/false, and fill-in-the-blank questions
-- Provide correct answers
-- Format as JSON with this structure:
-{
-  "questions": [
-    {
-      "type": "multiple-choice",
-      "text": "Question text?",
-      "options": ["A", "B", "C", "D"],
-      "correct": "A",
-      "points": 1
-    }
-  ]
-}
+- Generate EXACTLY %d questions - NO MORE, NO LESS
+- Count your questions carefully and ensure you generate precisely %d questions
+- ONLY generate multiple-choice questions with 4 options each
+- Each question must have exactly 4 answer options
+- Indicate the correct answer as index (0-3)
+- DO NOT include fill-in-the-blank or incomplete questions
+- LANGUAGE: Generate ALL questions and options in Bahasa Indonesia ONLY
+- Keep language consistent across all questions and answer options
 
-Ensure questions are clear, relevant, and test understanding of the key concepts.`,
-		req.QuestionCount, content, req.Title, req.Description, req.Difficulty, req.QuestionCount)
+QUALITY GUIDELINES:
+- Make questions clear, specific, and directly related to the content
+- Ensure all 4 options are plausible but only one is correct
+- Create distractors (wrong answers) that are reasonable but clearly incorrect
+- Avoid obvious patterns (e.g., correct answer always being option A)
+- Vary question difficulty and types (definition, application, analysis)
+- Each question should test different concepts from the material
+- Write concise explanations that clarify why the answer is correct
+- Ensure questions are unambiguous and have only one correct answer
+
+Format as JSON ARRAY with this EXACT structure:
+[
+  {
+    "question": "What is the complete question text here?",
+    "options": ["Option A text", "Option B text", "Option C text", "Option D text"],
+    "correctAnswer": 0,
+    "explanation": "Brief explanation"
+  }
+]
+
+CRITICAL REQUIREMENTS: 
+- You MUST generate exactly %d questions in the JSON array
+- Question text must be complete sentences, not fill-in-the-blank format
+- Do not use underscores (____) in questions
+- Each question must have exactly 4 distinct options
+- correctAnswer must be 0, 1, 2, or 3 (array index)
+- Return ONLY a JSON array, no additional text or wrapper object
+
+Return ONLY valid JSON array, no markdown formatting.`,
+		req.QuestionCount, content, req.Title, req.Description, req.QuestionCount, req.QuestionCount, req.QuestionCount)
 
 	return prompt
 }
@@ -830,6 +930,35 @@ func (ai *AIService) parseAIResponse(response string) ([]models.Question, error)
 	response = strings.TrimSuffix(response, "```")
 	response = strings.TrimSpace(response)
 
+	// Try to fix truncated JSON - find the last complete question object
+	if !strings.HasSuffix(response, "]") {
+		ai.logger.Warn("Response appears truncated, attempting to recover valid questions")
+
+		// Find the last complete question by looking for patterns
+		// A complete question ends with: }\n  },\n  { or }\n  }\n]
+		lastCompletePattern := strings.LastIndex(response, "},")
+		if lastCompletePattern > 0 {
+			// Found a complete object followed by comma - truncate there and close array
+			response = response[:lastCompletePattern+1] + "\n]"
+			ai.logger.Infof("Recovered truncated JSON by finding last complete object (pattern: }), new length: %d", len(response))
+		} else {
+			// Fallback: look for last complete "}" that's part of a full object
+			lastBrace := strings.LastIndex(response, "}")
+			if lastBrace > 0 {
+				// Check if there's a comma after it (incomplete next object)
+				afterBrace := response[lastBrace:]
+				if !strings.Contains(afterBrace, "{") {
+					// No new object started, safe to close
+					response = response[:lastBrace+1] + "\n]"
+					ai.logger.Infof("Recovered truncated JSON by finding last }, new length: %d", len(response))
+				}
+			}
+		}
+	}
+
+	// Log the cleaned response for debugging
+	ai.logger.Infof("Parsing AI response (first 500 chars): %s", response[:min(500, len(response))])
+
 	var rawQuestions []struct {
 		Question      string   `json:"question"`
 		Options       []string `json:"options"`
@@ -838,33 +967,40 @@ func (ai *AIService) parseAIResponse(response string) ([]models.Question, error)
 	}
 
 	if err := json.Unmarshal([]byte(response), &rawQuestions); err != nil {
+		ai.logger.Errorf("JSON parse error: %v\nResponse was: %s", err, response[:min(1000, len(response))])
 		return nil, fmt.Errorf("failed to parse JSON response: %w", err)
 	}
 
+	ai.logger.Infof("LLM generated %d questions in total", len(rawQuestions))
+
 	var questions []models.Question
-	for _, rq := range rawQuestions {
+	for i, rq := range rawQuestions {
 		if len(rq.Options) != 4 {
+			ai.logger.Warnf("Skipping question %d with %d options: %s", i+1, len(rq.Options), rq.Question)
 			continue // Skip malformed questions
 		}
 
 		questions = append(questions, models.Question{
 			ID:            uuid.New().String(),
-			Question:      rq.Question,
+			Text:          rq.Question, // Use Text field for database
+			Question:      rq.Question, // Keep Question for backward compatibility
 			Options:       rq.Options,
 			CorrectAnswer: rq.CorrectAnswer,
 			Explanation:   rq.Explanation,
 		})
 
-		// Limit to prevent excessive questions
-		if len(questions) >= 20 {
+		// Limit to prevent excessive questions (max 15 to match user input)
+		if len(questions) >= 15 {
 			break
 		}
 	}
 
 	if len(questions) == 0 {
+		ai.logger.Errorf("No valid questions found. Raw response had %d items", len(rawQuestions))
 		return nil, fmt.Errorf("no valid questions found in response")
 	}
 
+	ai.logger.Infof("Successfully parsed %d questions from AI response", len(questions))
 	return questions, nil
 }
 

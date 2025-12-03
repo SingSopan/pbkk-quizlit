@@ -61,12 +61,34 @@ func cleanQuestionText(text string) string {
 	return text
 }
 
+// QuizTitleExists checks if a quiz with the given title already exists for the user
+func (r *QuizRepository) QuizTitleExists(ctx context.Context, title string, userID string) (bool, error) {
+	db := database.GetDB()
+	if db == nil {
+		return false, fmt.Errorf("database connection not initialized")
+	}
+
+	var count int
+	err := db.QueryRow(ctx,
+		`SELECT COUNT(*) FROM quizzes WHERE LOWER(title) = LOWER($1) AND user_id = $2`,
+		title, userID,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("failed to check quiz title: %w", err)
+	}
+
+	return count > 0, nil
+}
+
 // CreateQuiz creates a new quiz with questions in the database
 func (r *QuizRepository) CreateQuiz(ctx context.Context, quiz *models.Quiz, userID string) error {
 	db := database.GetDB()
 	if db == nil {
 		return fmt.Errorf("database connection not initialized")
 	}
+
+	// Note: Duplicate title check is done at handler level before LLM generation
+	// to save time and resources
 
 	// Start transaction
 	tx, err := db.Begin(ctx)
@@ -75,13 +97,13 @@ func (r *QuizRepository) CreateQuiz(ctx context.Context, quiz *models.Quiz, user
 	}
 	defer tx.Rollback(ctx)
 
-	// Insert quiz
+	// Insert quiz with question_count initialized to 0 (trigger will auto-increment as questions are inserted)
 	var quizID int64
 	err = tx.QueryRow(ctx,
-		`INSERT INTO quizzes (user_id, title, description, pdf_filename, created_at) 
-		 VALUES ($1, $2, $3, $4, $5) 
+		`INSERT INTO quizzes (user_id, title, description, difficulty, pdf_filename, question_count, created_at) 
+		 VALUES ($1, $2, $3, $4, $5, 0, $6) 
 		 RETURNING id`,
-		userID, quiz.Title, quiz.Description, quiz.Title, time.Now(),
+		userID, quiz.Title, quiz.Description, quiz.Difficulty, quiz.Title, time.Now(),
 	).Scan(&quizID)
 	if err != nil {
 		return fmt.Errorf("failed to insert quiz: %w", err)
@@ -140,13 +162,13 @@ func (r *QuizRepository) GetQuiz(ctx context.Context, id string) (*models.Quiz, 
 
 	// Get quiz
 	var quiz models.Quiz
-	var title, description, pdfFilename, userID string
+	var title, description, difficulty, pdfFilename, userID string
 	var createdAt time.Time
 
 	err := db.QueryRow(ctx,
-		`SELECT id, user_id, title, description, pdf_filename, created_at FROM quizzes WHERE id = $1`,
+		`SELECT id, user_id, title, description, difficulty, pdf_filename, created_at FROM quizzes WHERE id = $1`,
 		id,
-	).Scan(&quiz.ID, &userID, &title, &description, &pdfFilename, &createdAt)
+	).Scan(&quiz.ID, &userID, &title, &description, &difficulty, &pdfFilename, &createdAt)
 	if err == pgx.ErrNoRows {
 		return nil, fmt.Errorf("quiz not found")
 	}
@@ -158,6 +180,7 @@ func (r *QuizRepository) GetQuiz(ctx context.Context, id string) (*models.Quiz, 
 
 	quiz.Title = title
 	quiz.Description = description
+	quiz.Difficulty = difficulty
 	quiz.CreatedAt = createdAt
 	quiz.UpdatedAt = createdAt
 
@@ -219,12 +242,10 @@ func (r *QuizRepository) GetAllQuizzes(ctx context.Context, userID string) ([]*m
 	}
 
 	rows, err := db.Query(ctx,
-		`SELECT q.id, q.title, q.description, q.pdf_filename, q.created_at, COUNT(qu.id) as question_count
-		 FROM quizzes q
-		 LEFT JOIN questions qu ON qu.quiz_id = q.id
-		 WHERE q.user_id = $1
-		 GROUP BY q.id, q.title, q.description, q.pdf_filename, q.created_at
-		 ORDER BY q.created_at DESC`,
+		`SELECT id, title, description, difficulty, pdf_filename, created_at, COALESCE(question_count, 0) as question_count
+		 FROM quizzes
+		 WHERE user_id = $1
+		 ORDER BY created_at DESC`,
 		userID,
 	)
 	if err != nil {
@@ -235,20 +256,20 @@ func (r *QuizRepository) GetAllQuizzes(ctx context.Context, userID string) ([]*m
 	var quizzes []*models.Quiz
 	for rows.Next() {
 		quiz := &models.Quiz{}
-		var title, description, pdfFilename string
+		var title, description, difficulty, pdfFilename string
 		var createdAt time.Time
 		var questionCount int
 
-		if err := rows.Scan(&quiz.ID, &title, &description, &pdfFilename, &createdAt, &questionCount); err != nil {
+		if err := rows.Scan(&quiz.ID, &title, &description, &difficulty, &pdfFilename, &createdAt, &questionCount); err != nil {
 			return nil, fmt.Errorf("failed to scan quiz: %w", err)
 		}
 
 		quiz.Title = title
 		quiz.Description = description
+		quiz.Difficulty = difficulty
 		quiz.CreatedAt = createdAt
 		quiz.UpdatedAt = createdAt
 		quiz.TotalQuestions = questionCount
-		quiz.Difficulty = "medium" // Default
 
 		quizzes = append(quizzes, quiz)
 	}

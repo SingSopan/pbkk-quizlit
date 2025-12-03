@@ -54,7 +54,10 @@ export const apiClient = {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorBody = await response.json().catch(() => ({}));
+      const error = new Error(errorBody.message || `HTTP error! status: ${response.status}`);
+      (error as any).response = { status: response.status, data: errorBody };
+      throw error;
     }
 
     return response.json();
@@ -76,7 +79,10 @@ export const apiClient = {
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorBody = await response.json().catch(() => ({}));
+      const error = new Error(errorBody.message || `HTTP error! status: ${response.status}`);
+      (error as any).response = { status: response.status, data: errorBody };
+      throw error;
     }
 
     return response.json();

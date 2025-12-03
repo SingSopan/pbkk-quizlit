@@ -393,7 +393,12 @@ export const generateQuizFromFile = async (
       return response.data;
     }
     throw new Error(response.message || 'Failed to generate quiz');
-  } catch (error) {
+  } catch (error: any) {
+    // Don't fallback for duplicate title errors - re-throw them
+    if (error?.message?.includes('already exists') || error?.response?.status === 409) {
+      throw error;
+    }
+    
     console.warn('Backend not available, processing file locally:', error);
     
     // Fallback: process file locally and generate quiz
@@ -430,7 +435,12 @@ export const generateQuizFromContent = async (
       return response.data;
     }
     throw new Error(response.message || 'Failed to generate quiz');
-  } catch (error) {
+  } catch (error: any) {
+    // Don't fallback for duplicate title errors - re-throw them
+    if (error?.message?.includes('already exists') || error?.response?.status === 409) {
+      throw error;
+    }
+    
     console.warn('Backend not available, generating quiz locally:', error);
     
     // Enhanced fallback generation based on content

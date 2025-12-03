@@ -6,6 +6,7 @@ import (
 	"pbkk-quizlit-backend/internal/middleware"
 	"pbkk-quizlit-backend/internal/models"
 	"pbkk-quizlit-backend/internal/services"
+	"strconv"
 	"strings"
 	"time"
 
@@ -64,14 +65,43 @@ func (h *QuizHandler) UploadFileAndGenerateQuiz(c *gin.Context) {
 	// Get quiz details from form
 	title := c.Request.FormValue("title")
 	description := c.Request.FormValue("description")
-	difficulty := c.Request.FormValue("difficulty")
+	questionCountStr := c.Request.FormValue("questionCount")
 
-	if title == "" || description == "" || difficulty == "" {
+	if title == "" || description == "" {
 		c.JSON(http.StatusBadRequest, models.APIResponse{
 			Success: false,
-			Message: "Title, description, and difficulty are required",
+			Message: "Title and description are required",
 		})
 		return
+	}
+
+	// Get user ID from context
+	userID := middleware.GetUserID(c)
+
+	// Check for duplicate title BEFORE processing file and generating quiz
+	exists, err := h.quizService.QuizTitleExists(c.Request.Context(), title, userID)
+	if err != nil {
+		h.logger.Errorf("Failed to check for duplicate title: %v", err)
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to validate quiz title",
+		})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("quiz with title '%s' already exists", title),
+		})
+		return
+	}
+
+	// Parse question count (default to 10 if not provided or invalid)
+	questionCount := 10
+	if questionCountStr != "" {
+		if count, err := strconv.Atoi(questionCountStr); err == nil && count >= 5 && count <= 15 {
+			questionCount = count
+		}
 	}
 
 	// Process the uploaded file
@@ -89,8 +119,8 @@ func (h *QuizHandler) UploadFileAndGenerateQuiz(c *gin.Context) {
 	quizReq := &models.QuizGenerationRequest{
 		Title:         title,
 		Description:   description,
-		Difficulty:    difficulty,
-		QuestionCount: 10, // Default
+		Difficulty:    "medium",
+		QuestionCount: questionCount,
 	}
 
 	// Generate quiz using AI
@@ -104,10 +134,7 @@ func (h *QuizHandler) UploadFileAndGenerateQuiz(c *gin.Context) {
 		return
 	}
 
-	// Get user ID from context
-	userID := middleware.GetUserID(c)
-
-	// Save quiz
+	// Save quiz (userID already retrieved earlier)
 	err = h.quizService.CreateQuiz(quiz, userID)
 	if err != nil {
 		h.logger.Errorf("Failed to save quiz: %v", err)
@@ -141,12 +168,33 @@ func (h *QuizHandler) GenerateQuizFromText(c *gin.Context) {
 	quizReq := &models.QuizGenerationRequest{
 		Title:         req.Title,
 		Description:   req.Description,
-		Difficulty:    req.Difficulty,
+		Difficulty:    "medium",
 		QuestionCount: req.QuestionCount,
 	}
 
 	if quizReq.QuestionCount == 0 {
 		quizReq.QuestionCount = 10
+	}
+
+	// Get user ID from context
+	userID := middleware.GetUserID(c)
+
+	// Check for duplicate title BEFORE generating quiz
+	exists, err := h.quizService.QuizTitleExists(c.Request.Context(), req.Title, userID)
+	if err != nil {
+		h.logger.Errorf("Failed to check for duplicate title: %v", err)
+		c.JSON(http.StatusInternalServerError, models.APIResponse{
+			Success: false,
+			Message: "Failed to validate quiz title",
+		})
+		return
+	}
+	if exists {
+		c.JSON(http.StatusConflict, models.APIResponse{
+			Success: false,
+			Message: fmt.Sprintf("quiz with title '%s' already exists", req.Title),
+		})
+		return
 	}
 
 	// Generate quiz using AI
@@ -157,10 +205,7 @@ func (h *QuizHandler) GenerateQuizFromText(c *gin.Context) {
 		quiz = h.generateFallbackQuiz(req.Content, quizReq)
 	}
 
-	// Get user ID from context
-	userID := middleware.GetUserID(c)
-
-	// Save quiz
+	// Save quiz (userID already retrieved earlier)
 	err = h.quizService.CreateQuiz(quiz, userID)
 	if err != nil {
 		h.logger.Errorf("Failed to save quiz: %v", err)
