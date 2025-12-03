@@ -23,6 +23,15 @@ export default function Dashboard() {
   const [editingQuiz, setEditingQuiz] = useState<Quiz | null>(null);
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
   const [loading, setLoading] = useState(false);
+  
+  // Delete popup states
+  const [showDeletePopup, setShowDeletePopup] = useState(false);
+  const [deletePopupMessage, setDeletePopupMessage] = useState("");
+  const [deletePopupType, setDeletePopupType] = useState<"success" | "error">("success");
+  
+  // Delete confirmation modal states
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [quizToDelete, setQuizToDelete] = useState<string | null>(null);
 
   // Check authentication and load data
   useEffect(() => {
@@ -101,18 +110,35 @@ export default function Dashboard() {
   };
 
   const handleDeleteQuiz = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this quiz? This action cannot be undone.')) {
-      return;
-    }
+    // Show custom confirmation modal instead of browser confirm
+    setQuizToDelete(id);
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!quizToDelete) return;
 
     try {
-      await deleteQuiz(id);
+      await deleteQuiz(quizToDelete);
       // Update local state after successful deletion
-      const updatedQuizzes = quizzes.filter(q => q.id !== id);
+      const updatedQuizzes = quizzes.filter(q => q.id !== quizToDelete);
       setQuizzes(updatedQuizzes);
+
+      // Show success popup
+      setDeletePopupMessage("Quiz deleted successfully!");
+      setDeletePopupType("success");
+      setShowDeletePopup(true);
+      setTimeout(() => setShowDeletePopup(false), 3000);
     } catch (error) {
       console.error('Failed to delete quiz:', error);
-      alert('Failed to delete quiz. Please try again.');
+      // Show error popup
+      setDeletePopupMessage("Failed to delete quiz. Please try again.");
+      setDeletePopupType("error");
+      setShowDeletePopup(true);
+      setTimeout(() => setShowDeletePopup(false), 3000);
+    } finally {
+      setShowDeleteConfirm(false);
+      setQuizToDelete(null);
     }
   };
 
@@ -140,6 +166,88 @@ export default function Dashboard() {
     <div className="min-h-screen bg-slate-900">
       {/* Header */}
       <Header />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center">
+          <div className="bg-slate-800 rounded-2xl p-8 max-w-md w-full mx-4 border border-slate-700 shadow-2xl animate-fade-in">
+            <div className="flex flex-col items-center">
+              {/* Warning Icon */}
+              <div className="w-16 h-16 mb-6 bg-red-500/20 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+              </div>
+              
+              {/* Text */}
+              <h3 className="text-2xl font-bold text-white mb-2">
+                Delete Quiz?
+              </h3>
+              <p className="text-slate-400 text-center mb-8">
+                Are you sure you want to delete this quiz? This action cannot be undone.
+              </p>
+              
+              {/* Buttons */}
+              <div className="flex gap-3 w-full">
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    setQuizToDelete(null);
+                  }}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-white py-3 px-6 rounded-xl font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="flex-1 bg-red-600 hover:bg-red-700 text-white py-3 px-6 rounded-xl font-medium transition-colors"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Popup Notification */}
+      {showDeletePopup && (
+        <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 animate-fade-in">
+          <div className={`flex items-center gap-3 px-6 py-4 rounded-xl shadow-2xl border backdrop-blur-sm ${
+            deletePopupType === "success"
+              ? "bg-green-900/90 border-green-700 text-green-100"
+              : "bg-red-900/90 border-red-700 text-red-100"
+          }`}>
+            {/* Icon */}
+            {deletePopupType === "success" ? (
+              <div className="w-8 h-8 bg-green-500/20 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              </div>
+            ) : (
+              <div className="w-8 h-8 bg-red-500/20 rounded-full flex items-center justify-center">
+                <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </div>
+            )}
+            
+            {/* Message */}
+            <span className="font-medium">{deletePopupMessage}</span>
+            
+            {/* Close Button */}
+            <button
+              onClick={() => setShowDeletePopup(false)}
+              className="ml-2 p-1 hover:bg-white/10 rounded-lg transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {/* Page Title */}
