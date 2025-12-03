@@ -87,6 +87,7 @@ go build -o app
 | `PORT` | Server port | `8080` |
 | `OPENAI_API_KEY` | OpenAI API key for AI generation | Required |
 | `CORS_ORIGIN` | Allowed CORS origin | `http://localhost:3000` |
+| `ENABLE_RAG` | Enable Retrieval Augmented Generation grounding | `true` |
 
 ## 🏗️ Project Structure
 
@@ -147,3 +148,14 @@ This project is part of the Quizlit application.
 ## 🆘 Support
 
 For setup help and troubleshooting, see the documentation in the `docs/` folder.
+
+## 🔍 RAG-based Quiz Generation
+
+This backend includes a lightweight Retrieval Augmented Generation (RAG) pipeline to improve quiz relevance from uploaded PDFs:
+
+- Splits extracted text into overlapping chunks
+- Computes deterministic hash-based embeddings (works without external services)
+- Retrieves top relevant chunks based on your quiz request
+- Grounds AI prompts with retrieved context before generating questions
+
+No additional configuration is required to use the built-in RAG for development. If you configure OpenAI via `OPENAI_API_KEY`, the grounded context is included in prompts to GPT. You can later replace the hash-based embeddings with a real provider.

@@ -68,7 +68,7 @@ func NewServer(cfg *config.Config) *Server {
 func (s *Server) setupRoutes() {
 	// Initialize services
 	fileService := services.NewFileService()
-	aiService := services.NewAIService(s.config.OpenAIKey)
+	aiService := services.NewAIServiceWithOptions(s.config.OpenAIKey, s.config.EnableRAG)
 	quizService := services.NewQuizService()
 
 	// Initialize handlers

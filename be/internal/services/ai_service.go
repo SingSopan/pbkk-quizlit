@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"bytes"
+	"io"
+	"net/http"
+
 	"github.com/google/uuid"
 	"github.com/sashabaranov/go-openai"
 	"github.com/sirupsen/logrus"
-	"io"
-	"net/http"
 )
 
 type AIService struct {
@@ -21,6 +22,9 @@ type AIService struct {
 	logger    *logrus.Logger
 	apiKey    string
 	useOpenAI bool
+	// RAG components
+	rag       *RAGService
+	enableRAG bool
 }
 
 func NewAIService(apiKey string) *AIService {
@@ -33,12 +37,23 @@ func NewAIService(apiKey string) *AIService {
 	}
 	logger := logrus.New()
 
-	return &AIService{
+	ai := &AIService{
 		client:    client,
 		logger:    logger,
 		apiKey:    apiKey,
 		useOpenAI: useOpenAI,
 	}
+	// initialize lightweight RAG with hash embedding (works without external deps)
+	ai.rag = NewRAGService(HashEmbedding{})
+	ai.enableRAG = true
+	return ai
+}
+
+// NewAIServiceWithOptions allows configuring RAG usage via flag
+func NewAIServiceWithOptions(apiKey string, enableRAG bool) *AIService {
+	ai := NewAIService(apiKey)
+	ai.enableRAG = enableRAG
+	return ai
 }
 
 // GenerateQuizFromContent generates quiz questions using AI or free alternatives
@@ -51,6 +66,43 @@ func (ai *AIService) GenerateQuizFromContent(content string, req *models.QuizGen
 
 	var questions []models.Question
 	var err error
+
+	// Build RAG index and retrieve top context chunks to ground prompts
+	if ai.rag != nil && ai.enableRAG {
+		// Use title or a generated docID
+		docID := req.Title
+		if strings.TrimSpace(docID) == "" {
+			docID = uuid.New().String()
+		}
+		if err := ai.rag.BuildIndex(docID, content); err == nil {
+			// retrieve with query from description+difficulty for better intent
+			query := strings.TrimSpace(req.Description + " " + req.Difficulty)
+			if query == "" {
+				query = "generate quiz key concepts"
+			}
+			top, _ := ai.rag.Retrieve(query, 5)
+			if len(top) > 0 {
+				// assemble grounded context
+				var b strings.Builder
+				b.WriteString("GroundedContext:\n")
+				for i, it := range top {
+					if i > 0 {
+						b.WriteString("\n---\n")
+					}
+					// cap chunk length
+					t := it.Text
+					if len(t) > 1200 {
+						t = t[:1200]
+					}
+					b.WriteString(t)
+				}
+				// prepend grounded context to content for downstream models
+				content = b.String() + "\n\nSourceContent:\n" + content
+			}
+		} else {
+			ai.logger.Warnf("RAG indexing failed: %v", err)
+		}
+	}
 
 	// Try different AI services in order of preference
 	if ai.useOpenAI && ai.client != nil {

@@ -15,6 +15,7 @@ type Config struct {
 	SupabaseURL       string
 	SupabaseAnonKey   string
 	SupabaseJWTSecret string
+	EnableRAG         bool
 }
 
 func Load() *Config {
@@ -31,6 +32,7 @@ func Load() *Config {
 		SupabaseURL:       getEnv("SUPABASE_URL", ""),
 		SupabaseAnonKey:   getEnv("SUPABASE_ANON_KEY", ""),
 		SupabaseJWTSecret: getEnv("SUPABASE_JWT_SECRET", ""),
+		EnableRAG:         getEnv("ENABLE_RAG", "true") == "true",
 	}
 }
 
