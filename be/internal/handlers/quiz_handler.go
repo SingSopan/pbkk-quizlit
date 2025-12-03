@@ -21,6 +21,10 @@ type QuizHandler struct {
 	logger      *logrus.Logger
 }
 
+const (
+	maxUploadSize = int64(20 << 20) // 20MB
+)
+
 func NewQuizHandler(quizService *services.QuizService, aiService *services.AIService, fileService *services.FileService) *QuizHandler {
 	return &QuizHandler{
 		quizService: quizService,
@@ -32,8 +36,11 @@ func NewQuizHandler(quizService *services.QuizService, aiService *services.AISer
 
 // UploadFileAndGenerateQuiz handles file upload and quiz generation
 func (h *QuizHandler) UploadFileAndGenerateQuiz(c *gin.Context) {
+	// Limit body size early to prevent oversized uploads
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxUploadSize)
+
 	// Parse multipart form
-	err := c.Request.ParseMultipartForm(10 << 20) // 10 MB max
+	err := c.Request.ParseMultipartForm(maxUploadSize)
 	if err != nil {
 		h.logger.Errorf("Failed to parse multipart form: %v", err)
 		c.JSON(http.StatusBadRequest, models.APIResponse{

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +20,10 @@ type APIServer struct {
 	validator *FileValidator
 	uploadDir string
 }
+
+const (
+	maxUploadSize = int64(20 << 20) // 20MB
+)
 
 // NewAPIServer creates a new API server instance
 func NewAPIServer(uploadDir string) *APIServer {
@@ -101,8 +106,11 @@ func (s *APIServer) handlePDFUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max 100MB)
-	if err := r.ParseMultipartForm(100 << 20); err != nil {
+	// Limit body size early to prevent oversized uploads
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+
+	// Parse multipart form (capped at maxUploadSize)
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		s.sendError(w, "Failed to parse form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -121,8 +129,9 @@ func (s *APIServer) handlePDFUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate unique filename
-	uniqueFilename := fmt.Sprintf("%s_%s", uuid.New().String(), header.Filename)
+	// Generate unique filename and ensure no path traversal from client input
+	originalName := filepath.Base(strings.TrimSpace(header.Filename))
+	uniqueFilename := fmt.Sprintf("%s_%s", uuid.New().String(), originalName)
 	filePath := filepath.Join(s.uploadDir, uniqueFilename)
 
 	// Save the file
@@ -188,8 +197,11 @@ func (s *APIServer) handlePDFInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse multipart form (max 100MB)
-	if err := r.ParseMultipartForm(100 << 20); err != nil {
+	// Limit body size early to prevent oversized uploads
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+
+	// Parse multipart form (capped at maxUploadSize)
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		s.sendError(w, "Failed to parse form data: "+err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -208,8 +220,9 @@ func (s *APIServer) handlePDFInfo(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate unique filename
-	uniqueFilename := fmt.Sprintf("%s_%s", uuid.New().String(), header.Filename)
+	// Generate unique filename and ensure no path traversal from client input
+	originalName := filepath.Base(strings.TrimSpace(header.Filename))
+	uniqueFilename := fmt.Sprintf("%s_%s", uuid.New().String(), originalName)
 	filePath := filepath.Join(s.uploadDir, uniqueFilename)
 
 	// Save the file temporarily

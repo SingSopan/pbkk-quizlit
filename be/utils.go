@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,15 +48,61 @@ func (v *FileValidator) ValidateFile(filePath string) error {
 		return fmt.Errorf("invalid file extension '%s', expected .pdf", ext)
 	}
 
-	// Check file size (limit to 100MB)
-	const maxFileSize = 100 * 1024 * 1024 // 100MB
+	// Check file size (limit to 20MB)
+	const maxFileSize = 20 * 1024 * 1024 // 20MB
 	if fileInfo.Size() > maxFileSize {
-		return fmt.Errorf("file too large: %s (max allowed: 100MB)", formatFileSize(fileInfo.Size()))
+		return fmt.Errorf("file too large: %s (max allowed: 20MB)", formatFileSize(fileInfo.Size()))
 	}
 
 	// Check if file is empty
 	if fileInfo.Size() == 0 {
 		return fmt.Errorf("file is empty")
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file: %w", err)
+	}
+	defer f.Close()
+
+	// Read a small header to verify PDF signature and MIME type
+	header := make([]byte, 1024)
+	n, err := f.Read(header)
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read file header: %w", err)
+	}
+	if n < 5 || !bytes.HasPrefix(header[:n], []byte("%PDF-")) {
+		return fmt.Errorf("file does not appear to be a valid PDF (missing signature)")
+	}
+
+	mime := http.DetectContentType(header[:n])
+	if mime != "application/pdf" && mime != "application/octet-stream" {
+		return fmt.Errorf("invalid content type '%s', expected application/pdf", mime)
+	}
+
+	// Scan the first chunk for active content markers
+	const sniffSize = 1024 * 1024 // 1MB
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		return fmt.Errorf("failed to rewind file for scanning: %w", err)
+	}
+
+	body := make([]byte, sniffSize)
+	m, _ := f.Read(body)
+	lower := bytes.ToLower(body[:m])
+	suspiciousMarkers := [][]byte{
+		[]byte("/js"),
+		[]byte("/javascript"),
+		[]byte("/launch"),
+		[]byte("/embeddedfile"),
+		[]byte("/embeddedfiles"),
+		[]byte("/richmedia"),
+		[]byte("/openaction"),
+		[]byte("/uri"),
+	}
+	for _, marker := range suspiciousMarkers {
+		if bytes.Contains(lower, marker) {
+			return fmt.Errorf("file contains disallowed PDF active content marker: %s", marker)
+		}
 	}
 
 	return nil

@@ -1,14 +1,15 @@
 package services
 
 import (
+	"bytes"
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"path/filepath"
 	"strings"
 
 	"github.com/ledongthuc/pdf"
-	"golang.org/x/text/encoding/charmap"
 )
 
 type FileService struct{}
@@ -17,52 +18,36 @@ func NewFileService() *FileService {
 	return &FileService{}
 }
 
+const (
+	maxPDFSize   = int64(20 << 20)   // 20MB
+	sniffPDFSize = int64(1 << 20)    // 1MB
+	minPDFHeader = 5                 // "%PDF-" is 5 bytes
+)
+
 // ProcessUploadedFile extracts text content from uploaded files
 func (fs *FileService) ProcessUploadedFile(file multipart.File, header *multipart.FileHeader) (string, error) {
 	defer file.Close()
 
-	// Get file extension
 	ext := strings.ToLower(filepath.Ext(header.Filename))
 
-	switch ext {
-	case ".txt":
-		return fs.processTXTFile(file)
-	case ".pdf":
-		return fs.processPDFFile(file)
-	default:
-		return "", fmt.Errorf("unsupported file type: %s", ext)
+	if ext != ".pdf" {
+		return "", fmt.Errorf("unsupported file type: %s (only PDF allowed)", ext)
 	}
+
+	content, err := readLimited(file, maxPDFSize)
+	if err != nil {
+		return "", err
+	}
+
+	if err := validatePDFContent(content, header.Filename); err != nil {
+		return "", err
+	}
+
+	return fs.processPDFBuffer(content)
 }
 
-func (fs *FileService) processTXTFile(file multipart.File) (string, error) {
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return "", fmt.Errorf("failed to read TXT file: %w", err)
-	}
-
-	// Try to decode as UTF-8 first, fallback to Windows-1252 if needed
-	text := string(content)
-	if !isValidUTF8(text) {
-		decoder := charmap.Windows1252.NewDecoder()
-		decodedContent, err := decoder.Bytes(content)
-		if err != nil {
-			return "", fmt.Errorf("failed to decode text file: %w", err)
-		}
-		text = string(decodedContent)
-	}
-
-	return text, nil
-}
-
-func (fs *FileService) processPDFFile(file multipart.File) (string, error) {
-	// Read all content into memory
-	content, err := io.ReadAll(file)
-	if err != nil {
-		return "", fmt.Errorf("failed to read PDF file: %w", err)
-	}
-
-	// Create a reader from the content
-	reader, err := pdf.NewReader(strings.NewReader(string(content)), int64(len(content)))
+func (fs *FileService) processPDFBuffer(content []byte) (string, error) {
+	reader, err := pdf.NewReader(bytes.NewReader(content), int64(len(content)))
 	if err != nil {
 		return "", fmt.Errorf("failed to create PDF reader: %w", err)
 	}
@@ -223,11 +208,63 @@ func (fs *FileService) normalizePDFText(text string) string {
 	
 	// Remove multiple consecutive spaces again
 	text = strings.Join(strings.Fields(text), " ")
-	
+
 	return strings.TrimSpace(text)
 }
 
-func isValidUTF8(s string) bool {
-	// Simple check for valid UTF-8 by looking for replacement characters
-	return !strings.Contains(s, "\ufffd")
+func readLimited(r io.Reader, limit int64) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file: %w", err)
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("file too large (max allowed: %d bytes)", limit)
+	}
+	if len(data) == 0 {
+		return nil, fmt.Errorf("file is empty")
+	}
+	return data, nil
+}
+
+func validatePDFContent(content []byte, filename string) error {
+	if len(content) < minPDFHeader || !bytes.HasPrefix(content, []byte("%PDF-")) {
+		return fmt.Errorf("file does not appear to be a valid PDF: %s", filename)
+	}
+
+	// Verify content type
+	mime := http.DetectContentType(content[:min(len(content), 512)])
+	if mime != "application/pdf" && mime != "application/octet-stream" {
+		return fmt.Errorf("invalid content type '%s', expected application/pdf", mime)
+	}
+
+	// Scan for common active/suspicious markers
+	end := int64(len(content))
+	if end > sniffPDFSize {
+		end = sniffPDFSize
+	}
+	lower := bytes.ToLower(content[:end])
+	markers := [][]byte{
+		[]byte("/js"),
+		[]byte("/javascript"),
+		[]byte("/launch"),
+		[]byte("/embeddedfile"),
+		[]byte("/embeddedfiles"),
+		[]byte("/richmedia"),
+		[]byte("/openaction"),
+		[]byte("/uri"),
+	}
+	for _, marker := range markers {
+		if bytes.Contains(lower, marker) {
+			return fmt.Errorf("file contains disallowed PDF active content marker: %s", marker)
+		}
+	}
+
+	return nil
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

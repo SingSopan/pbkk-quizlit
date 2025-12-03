@@ -10,7 +10,7 @@ require (
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/sashabaranov/go-openai v1.17.9
 	github.com/sirupsen/logrus v1.9.3
-	golang.org/x/text v0.24.0
+	golang.org/x/text v0.24.0 // indirect
 )
 
 require (
