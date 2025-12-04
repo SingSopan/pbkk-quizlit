@@ -231,13 +231,13 @@ export default function CreateQuiz() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* File Upload Area */}
-          <div>
+          {/* File Upload Card */}
+          <div className="bg-gray-800 rounded-lg p-8 border-2 border-gray-700 ">
             <div
               className={`relative border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
                 dragActive
                   ? 'border-blue-400 bg-blue-900/20'
-                  : 'border-gray-600 bg-gray-800'
+                  : 'border-gray-600 bg-gray-700/50'
               }`}
               onDragEnter={handleDrag}
               onDragLeave={handleDrag}
@@ -265,47 +265,61 @@ export default function CreateQuiz() {
                 or click to browse your files
               </p>
               
-              <div className="space-y-3">
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg transition-colors"
-                >
-                  Choose File
-                </button>
-                <div className="text-gray-400 text-sm">or</div>
-                <button
-                  onClick={() => setShowQuizDetails(true)}
-                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg transition-colors"
-                >
-                  Create Quiz Manually
-                </button>
-              </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-lg transition-colors font-medium"
+              >
+                Choose File
+              </button>
             </div>
 
             {/* Supported Formats */}
-            <div className="mt-4">
-              <p className="text-gray-400 text-sm text-center">Supported format:</p>
-              <div className="flex justify-center space-x-4 mt-2">
-                <div className="flex items-center space-x-1 bg-gray-700 px-3 py-1 rounded">
-                  <span className="text-red-400 text-sm">📄</span>
-                  <span className="text-gray-300 text-sm">PDF</span>
+            <div className="mt-6">
+              <p className="text-gray-400 text-sm text-center mb-3">Supported format:</p>
+              <div className="flex justify-center space-x-4">
+                <div className="flex items-center space-x-2 bg-gray-700 px-4 py-2 rounded-lg">
+                  <span className="text-red-400 text-lg">📄</span>
+                  <span className="text-gray-300 text-sm font-medium">PDF</span>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Illustration */}
-          <div className="flex items-center justify-center">
-            <div className="bg-blue-600/20 rounded-lg p-8 w-full">
-              <div className="text-center">
-                <div className="w-32 h-32 bg-blue-600/30 rounded-full mx-auto mb-4 flex items-center justify-center">
-                  <svg className="w-16 h-16 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          {/* Study Materials Card */}
+          <div className="bg-gray-800 rounded-lg p-8 border-2 border-gray-700 flex items-center justify-center">
+            <div className="text-center">
+              <div className="w-32 h-32 bg-blue-600/20 rounded-full mx-auto mb-6 flex items-center justify-center border-4 border-blue-600/30">
+                <svg className="w-16 h-16 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.746 0 3.332.477 4.5 1.253v13C19.832 18.477 18.246 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-bold text-white mb-3">
+                Upload Your Study Materials
+              </h3>
+              <p className="text-gray-400 leading-relaxed">
+                Upload your study materials and we'll create engaging quizzes automatically using AI
+              </p>
+              
+              {/* Features */}
+              <div className="mt-6 space-y-2 text-sm text-gray-400">
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
+                  <span>AI-Powered Question Generation</span>
                 </div>
-                <p className="text-gray-300">
-                  Upload your study materials and we'll create engaging quizzes automatically
-                </p>
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Multiple Choice Format</span>
+                </div>
+                <div className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span>Instant Quiz Creation</span>
+                </div>
               </div>
             </div>
           </div>
