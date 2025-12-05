@@ -134,12 +134,12 @@ export default function CreateQuiz() {
               
               {/* Buttons */}
               <div className="flex gap-3 w-full">
-                <button
-                  onClick={() => window.location.href = '/dashboard'}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-medium transition-colors"
+                <Link
+                  href="/dashboard"
+                  className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 px-6 rounded-lg font-medium transition-colors text-center"
                 >
                   View Dashboard
-                </button>
+                </Link>
                 <button
                   onClick={() => {
                     setShowSuccessModal(false);
