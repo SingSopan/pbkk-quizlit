@@ -10,6 +10,8 @@ import { listUserAttempts } from "../lib/quizApi";
 export default function HistoryPage() {
   const [attempts, setAttempts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortBy, setSortBy] = useState<'recent' | 'score'>('recent');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     const loadAttempts = async () => {
@@ -34,6 +36,17 @@ export default function HistoryPage() {
       </div>
     );
   }
+
+  // Sort attempts based on selected criteria
+  const sortedAttempts = [...attempts].sort((a, b) => {
+    let comparison = 0;
+    if (sortBy === 'recent') {
+      comparison = new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    } else if (sortBy === 'score') {
+      comparison = b.percentage - a.percentage;
+    }
+    return sortOrder === 'desc' ? comparison : -comparison;
+  });
 
   const totalQuizzes = attempts.length;
   const averageScore = attempts.length
@@ -95,19 +108,34 @@ export default function HistoryPage() {
 
         {/* Filter & Sort Bar */}
         <div className="bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 mb-6 flex items-center justify-between">
-          <div className="flex items-center space-x-2 text-gray-300">
+          {/* <div className="flex items-center space-x-2 text-gray-300">
             <span className="text-sm">Filter & Sort:</span>
             <button className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-md text-sm">All Categories</button>
-          </div>
-          <div className="flex items-center space-x-2">
+          </div> */}
+            <div className="flex items-center space-x-2">
             <span className="text-sm text-gray-300">Sort by:</span>
-            <button className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-md text-sm">Most Recent</button>
-          </div>
+            <select 
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'recent' | 'score')}
+              className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-md text-sm "
+            >
+              <option value="recent">Most Recent</option>
+              <option value="score">Total Score</option>
+            </select>
+            <button
+              onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+              className="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded-md text-sm flex items-center space-x-1"
+              title={sortOrder === 'desc' ? 'Descending' : 'Ascending'}
+            >
+              <span>{sortOrder === 'desc' ? '↓' : '↑'}</span>
+              {/* <span>{sortOrder === 'desc' ? 'Desc' : 'Asc'}</span> */}
+            </button>
+            </div>
         </div>
 
         {/* History List */}
         <div className="space-y-4">
-          {attempts.map((attempt) => (
+          {sortedAttempts.map((attempt) => (
             <div key={attempt.id} className="bg-gray-800 border border-gray-700 rounded-lg p-4 flex items-center justify-between">
               {/* Left: icon + title + meta */}
               <div className="flex items-center space-x-4">

@@ -461,7 +461,7 @@ export default function Dashboard() {
                   required
                 />
               </div>
-              <div className="mb-6">
+              {/* <div className="mb-6">
                 <label className="block text-gray-300 text-sm font-medium mb-2">
                   Difficulty
                 </label>
@@ -474,7 +474,7 @@ export default function Dashboard() {
                   <option value="medium">Medium</option>
                   <option value="hard">Hard</option>
                 </select>
-              </div>
+              </div> */}
               <div className="flex space-x-3">
                 <button
                   type="submit"
