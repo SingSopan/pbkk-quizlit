@@ -42,6 +42,9 @@ export default function Header() {
               <Link href="/history" className="text-slate-300 hover:text-white transition-colors font-medium">
                 History
               </Link>
+              <Link href="/documentation" className="text-slate-300 hover:text-white transition-colors font-medium">
+                Docs
+              </Link>
             </nav>
           </div>
 
